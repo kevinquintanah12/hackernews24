@@ -15,6 +15,11 @@ from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+# Al principio o cerca de otras configuraciones de base de datos
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Resto de la configuración
 
 
 # Quick-start development settings - unsuitable for production
@@ -48,6 +53,13 @@ INSTALLED_APPS = [
     'graphene_django',
     'links',
     'corsheaders',
+    'header',
+    'education',
+    'workexperience',
+    'skills',
+    'languages',
+    'interest',
+
 ]
 
 MIDDLEWARE = [
@@ -89,7 +101,7 @@ WSGI_APPLICATION = 'hacker_news.wsgi.application'
 DATABASES = {
     'default': dj_database_url.config(
         # Replace this value with your local database's connection string.
-        default='postgresql://postgres:postgres@localhost:5432/mysite',
+        default='postgresql://postgres:postgres@localhost:5432/mycv',
         conn_max_age=600
     )
 }
