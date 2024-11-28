@@ -35,7 +35,7 @@ class Query(graphene.ObjectType):
         return Education.objects.filter(filter_condition).first()
 
 
-class CreateEducation(graphene.Mutation):
+class CreateOrUpdateEducation(graphene.Mutation):
     id = graphene.Int()
     degree = graphene.String()
     university = graphene.String()
@@ -44,27 +44,41 @@ class CreateEducation(graphene.Mutation):
     posted_by = graphene.Field(UserType)
 
     class Arguments:
+        id = graphene.Int(required=False)  # ID opcional para actualización
         degree = graphene.String()
         university = graphene.String()
         start_date = graphene.Date()
         end_date = graphene.Date()
 
-    def mutate(self, info, degree, university, start_date, end_date):
+    def mutate(self, info, degree, university, start_date, end_date, id=None):
         user = info.context.user
         if user.is_anonymous:
             raise Exception("Not logged in!")
 
-        # Create and save the education record
-        education = Education(
-            degree=degree,
-            university=university,
-            start_date=start_date,
-            end_date=end_date,
-            posted_by=user
-        )
-        education.save()
+        # Si se proporciona un ID, intentamos actualizar
+        if id:
+            education = Education.objects.filter(id=id, posted_by=user).first()
+            if not education:
+                raise Exception("Invalid Education ID or not authorized to edit this entry.")
+            
+            # Actualizar los campos
+            education.degree = degree
+            education.university = university
+            education.start_date = start_date
+            education.end_date = end_date
+            education.save()
+        else:
+            # Crear un nuevo registro
+            education = Education(
+                degree=degree,
+                university=university,
+                start_date=start_date,
+                end_date=end_date,
+                posted_by=user
+            )
+            education.save()
 
-        return CreateEducation(
+        return CreateOrUpdateEducation(
             id=education.id,
             degree=education.degree,
             university=education.university,
@@ -95,7 +109,7 @@ class DeleteEducation(graphene.Mutation):
 
 
 class Mutation(graphene.ObjectType):
-    create_education = CreateEducation.Field()
+    create_or_update_education = CreateOrUpdateEducation.Field()
     delete_education = DeleteEducation.Field()
 
 

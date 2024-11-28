@@ -1,213 +1,467 @@
-from datetime import datetime
+from django.test import TestCase
 from graphene_django.utils.testing import GraphQLTestCase
+from mixer.backend.django import mixer
+import graphene
 import json
 from django.contrib.auth import get_user_model
-from header.models import Header
-from header.schema import schema
 
-# Mutación para crear un usuario
+from header.schema import schema
+from header.models import Header
+
+# Create your tests here.
+
+HEADER_QUERY = '''
+query GetHeaders($search: String) {
+  headers(search: $search) {
+    id
+    name
+  }
+}
+'''
+
+HEADER_BY_ID_QUERY = '''
+            query GetHeaderById($id_header: Int!) {
+                headerById(idHeader: $id_header) {
+                    id
+                    name
+                }
+            }
+'''
+
+USERS_QUERY = '''
+ {
+   users {
+     id
+     username
+     password
+   }
+ }
+'''
+
+
+CREATE_HEADER_MUTATION = '''
+ mutation createHeaderMutation($id_header: Int!, $name: String!,
+    $description: String!,
+    $image_url: String,
+    $email: String!,
+    $phone_number: String,
+    $location: String!,
+    $github: String!) {
+     createHeader(idHeader: $id_header, name: $name,
+        description: $description,
+        imageUrl: $image_url,
+        email: $email,
+        phoneNumber: $phone_number,
+        location: $location,
+        github: $github) {
+         idHeader
+         name
+     }
+ }
+'''
+
 CREATE_USER_MUTATION = '''
-mutation createUserMutation($email: String!, $password: String!, $username: String!) {
-    createUser(email: $email, password: $password, username: $username) {
-        user {
+ mutation createUserMutation($email: String!, $password: String!, $username: String!) {
+     createUser(email: $email, password: $password, username: $username) {
+         user {
             username
             password
-        }
-    }
-}
+         }
+     }
+ }
 '''
 
-# Mutación de login
 LOGIN_USER_MUTATION = '''
-mutation TokenAuthMutation($username: String!, $password: String!) {
-    tokenAuth(username: $username, password: $password) {
+ mutation TokenAuthMutation($username: String!, $password: String!) {
+     tokenAuth(username: $username, password: $password) {
         token
-    }
-}
+     }
+ }
 '''
 
-# Consultas de headers
-QUERY_ALL_HEADERS = '''
-query {
-    header {
-        id
-        name
-        phone
-        email
-        location
-        photo
-    }
-}
-'''
-
-
-
-# Mutación de crear header
-CREATE_HEADER_MUTATION = '''
-mutation createHeaderMutation($name: String!, $phone: String!, $email: String!, $location: String!, $photo: String!) {
-    createHeader(
-        name: $name,
-        phone: $phone,
-        email: $email,
-        location: $location,
-        photo: $photo
-    ) {
-        id
-        name
-        phone
-        email
-        location
-        photo
-    }
-}
-'''
-
-# Mutación de actualización de header
-UPDATE_HEADER_MUTATION = '''
-mutation updateHeaderMutation($id: Int!, $name: String!, $phone: String!, $email: String!, $location: String!, $photo: String!) {
-    updateHeader(
-        idHeader: $id,
-        name: $name,
-        phone: $phone,
-        email: $email,
-        location: $location,
-        photo: $photo
-    ) {
+DELETE_HEADER_MUTATION = '''
+mutation DeleteHeader($id_header: Int!) {
+    deleteHeader(idHeader: $id_header) {
         idHeader
-        name
-        phone
-        email
-        location
-        photo
     }
 }
 '''
 
-class HeaderTests(GraphQLTestCase):
+class HeaderTestCase(GraphQLTestCase):
     GRAPHQL_URL = "http://localhost:8000/graphql/"
     GRAPHQL_SCHEMA = schema
-
+    
     def setUp(self):
-
+        self.header1 = mixer.blend(Header)
+        self.header2 = mixer.blend(Header)
+   
         response_user = self.query(
             CREATE_USER_MUTATION,
-            variables={"email": "user@example.com", "username": "testuser", "password": "testpassword"}
+            variables={'email': 'adsoft@live.com.mx', 'username': 'adsoft', 'password': 'adsoft'}
         )
-        print("Create user response status code:", response_user.status_code)
-        print("Create user response content:", response_user.content)
-        if response_user.status_code != 200:
-            raise Exception(f"Error in create user mutation: {response_user.content}")
-
-        try:
-            content_user = json.loads(response_user.content)
-        except json.JSONDecodeError as e:
-            raise Exception(f"JSON decode error in create user mutation: {response_user.content}") from e
-
-        if "errors" in content_user:
-            raise Exception(f"GraphQL error in create user mutation: {content_user['errors']}")
+        print('user mutation ')
+        content_user = json.loads(response_user.content)
+        print(content_user['data'])
 
         response_token = self.query(
             LOGIN_USER_MUTATION,
-            variables={"username": "testuser", "password": "testpassword"}
+            variables={'username': 'adsoft', 'password': 'adsoft'}
         )
-        print("Login response status code:", response_token.status_code)
-        print("Login response content:", response_token.content)
 
-        if response_token.status_code != 200:
-            raise Exception(f"Error in login mutation: {response_token.content}")
+        content_token = json.loads(response_token.content)
+        token = content_token['data']['tokenAuth']['token']
+        print(token)
+        self.headers = {"AUTHORIZATION": f"JWT {token}"}
 
-        try:
-            content_token = json.loads(response_token.content)
-        except json.JSONDecodeError as e:
-            raise Exception(f"JSON decode error in login mutation: {response_token.content}") from e
 
-        if "errors" in content_token:
-            raise Exception(f"GraphQL error in login mutation: {content_token['errors']}")
+    def test_headers_query(self):
+        self.query(
+            CREATE_HEADER_MUTATION,
+            variables={
+                'id_header': 0,
+                "name": "John Doe",
+                "description": "A passionate software engineer with a focus on backend development.",
+                "image_url": "https://example.com/profile.jpg",
+                "email": "johndoe@example.com",
+                "phone_number": "+123456789",
+                "location": "New York, USA",
+                "github": "https://github.com/johndoe"},
+            headers=self.headers
+        )
+         
+        response = self.query(
+            HEADER_QUERY,
+             variables={
+                'search': '*'},
+            headers=self.headers
+        )
+        print(response)
+        content = json.loads(response.content)
+        print(response.content)
+        # This validates the status code and if you get errors
+        self.assertResponseNoErrors(response)
+        print ("query headers results ")
+        print (response)
+        assert len(content['data']['headers']) == 1
 
-        self.token = content_token["data"]["tokenAuth"]["token"]
-        self.headers = {"AUTHORIZATION": f"JWT {self.token}"}
 
-        # Ensure the user doesn't already have a header before creating one
-        if not Header.objects.filter(user=get_user_model().objects.get(username="testuser")).exists():
-            self.header = Header.objects.create(
-                name="John Doe",
-                phone="1234567890",
-                email="john.doe@example.com",
-                location="New York",
-                photo="https://example.com/photo.jpg",  # Asegúrate de que sea una URL válida si el campo es obligatorio
-                user=get_user_model().objects.get(username="testuser")
-            )
+    def test_users_query(self):
+        response = self.query(
+            USERS_QUERY,
+        )
+        print(response)
+        content = json.loads(response.content)
+        print(response.content)
+        # This validates the status code and if you get errors
+        self.assertResponseNoErrors(response)
+        print ("query users results ")
+        print (response)
+        assert len(content['data']['users']) == 3
 
-    def test_query_all_headers(self):
 
-        header = Header.objects.order_by('?').first()
-
-        response = self.query(QUERY_ALL_HEADERS, headers=self.headers)
-        print("Query all headers response status code:", response.status_code)
-        print("Query all headers response content:", response.content)
-
-        try:
-            content = json.loads(response.content)
-        except json.JSONDecodeError as e:
-            raise Exception(f"JSON decode error in query all headers: {response.content}") from e
-
-        if response.status_code != 200 or "errors" in content:
-            raise Exception(f"Error querying all headers: {content}")
+    def test_createHeader_mutation(self):
+        response = self.query(
+            CREATE_HEADER_MUTATION,
+            variables={
+                'id_header': 0,
+                "name": "John Doe",
+                "description": "A passionate software engineer with a focus on backend development.",
+                "image_url": "https://example.com/profile.jpg",
+                "email": "johndoe@example.com",
+                "phone_number": "+123456789",
+                "location": "New York, USA",
+                "github": "https://github.com/johndoe"},
+            headers=self.headers
+        )
+        content = json.loads(response.content)
+        created_headers_id = content['data']['createHeader']['idHeader']
+        print("Response content:", content)
+        print(content['data'])
+        self.assertResponseNoErrors(response)
+        self.assertDictEqual({"createHeader": {"idHeader": created_headers_id, "name": "John Doe"}}, content['data']) 
+        
+    def test_query_invalid_id(self):
+        response = self.query(
+            HEADER_BY_ID_QUERY,
+            variables={'id_header': 999},
+            headers=self.headers
+        )
+        content = json.loads(response.content)
+        
+        self.assertResponseNoErrors(response)
+        self.assertIsNone(content['data']['headerById'])
+        
+    def test_update_existing_headers(self):
+        response_create = self.query(
+            CREATE_HEADER_MUTATION,
+            variables={
+                'id_header': 0,
+                "name": "John Doe",
+                "description": "A passionate software engineer with a focus on backend development.",
+                "image_url": "https://example.com/profile.jpg",
+                "email": "johndoe@example.com",
+                "phone_number": "+123456789",
+                "location": "New York, USA",
+                "github": "https://github.com/johndoe"},
+            headers=self.headers
+        )
+        
+        content_create = json.loads(response_create.content)
+        created_headers_id = content_create['data']['createHeader']['idHeader']
 
         
-    
-    def test_mutation_create_header(self):
-        # Ensure no header exists before creating one
-        if not Header.objects.filter(user=get_user_model().objects.get(username="testuser")).exists():
-            response = self.query(
-                CREATE_HEADER_MUTATION,
-                variables={
-                    "name": "Jane Doe",
-                    "phone": "0987654321",
-                    "email": "jane.doe@example.com",
-                    "location": "California",
-                    "photo": "https://example.com/photo2.jpg"
-                },
-                headers=self.headers
-            )
-            print("Create header response status code:", response.status_code)
-            print("Create header response content:", response.content)
-
-            try:
-                content = json.loads(response.content)
-            except json.JSONDecodeError as e:
-                raise Exception(f"JSON decode error in create header mutation: {response.content}") from e
-
-            if response.status_code != 200 or "errors" in content:
-                raise Exception(f"Error in create header mutation: {content}")
-
-            self.assertResponseNoErrors(response)
-            self.assertEqual(content["data"]["createHeader"]["name"], "Jane Doe")
-
-    def test_mutation_update_header(self):
-        response = self.query(
-            UPDATE_HEADER_MUTATION,
+        self.query(
+            CREATE_HEADER_MUTATION,
             variables={
-                "id": self.header.id,
-                "name": "John Updated",
-                "phone": "9876543210",
-                "email": "john.updated@example.com",
-                "location": "Los Angeles",
-                "photo": "https://example.com/photo_updated.jpg"
+                'id_header': created_headers_id,
+                "name": "Homero",
+                "description": "A passionate software engineer with a focus on backend development.",
+                "image_url": "https://example.com/profile.jpg",
+                "email": "johndoe@example.com",
+                "phone_number": "+123456789",
+                "location": "New York, USA",
+                "github": "https://github.com/johndoe"},
+            headers=self.headers
+        )
+
+        response_query = self.query(
+        HEADER_BY_ID_QUERY,
+        variables={'id_header': created_headers_id},
+        headers=self.headers
+        )
+        
+        content_query = json.loads(response_query.content)
+                
+        
+        response_query_all = self.query(
+            HEADER_QUERY,
+             variables={
+                'search': '*'},
+            headers=self.headers
+        )
+        
+        content = json.loads(response_query_all.content)
+
+        assert len(content['data']['headers']) == 1
+        self.assertEqual(content_query['data']['headerById']['name'], "Homero")
+        
+    def test_not_logged_in(self):
+        response = self.query(
+            HEADER_BY_ID_QUERY,
+            variables={"id_header": 1}
+        )
+
+        content = json.loads(response.content)
+
+        self.assertIn('errors', content)
+        self.assertIn("Not logged in", content['errors'][0]['message'])
+
+        response = self.query(
+            HEADER_QUERY,
+            variables={"search": "*"}
+        )
+
+        content = json.loads(response.content)
+
+        self.assertIn('errors', content)
+        self.assertIn("Not logged in!", content['errors'][0]['message'])
+
+    def test_filter_search(self):
+        self.query(
+            CREATE_HEADER_MUTATION,
+            variables={
+                'id_header': 1,
+                'name': 'Header A',
+                'description': 'This is header A.',
+                'image_url': 'https://example.com/image1.jpg',
+                'email': 'headera@example.com',
+                'phone_number': '+123456789',
+                'location': 'New York, USA',
+                'github': 'https://github.com/headera'
             },
             headers=self.headers
         )
-        print("Update header response status code:", response.status_code)
-        print("Update header response content:", response.content)
 
-        try:
-            content = json.loads(response.content)
-        except json.JSONDecodeError as e:
-            raise Exception(f"JSON decode error in update header mutation: {response.content}") from e
+        response = self.query(
+            HEADER_QUERY,
+            variables={"search": "Header A"},
+            headers=self.headers
+        )
 
-        if response.status_code != 200 or "errors" in content:
-            raise Exception(f"Error in update header mutation: {content}")
+        content = json.loads(response.content)
 
         self.assertResponseNoErrors(response)
-        self.assertEqual(content["data"]["updateHeader"]["name"], "John Updated")
-        self.assertEqual(content["data"]["updateHeader"]["phone"], "9876543210")
+        self.assertEqual(len(content['data']['headers']), 1)
+        self.assertEqual(content['data']['headers'][0]['name'], "Header A")
+
+        response = self.query(
+            HEADER_QUERY,
+            variables={"search": "*"},
+            headers=self.headers
+        )
+
+        content = json.loads(response.content)
+
+        self.assertResponseNoErrors(response)
+        self.assertEqual(len(content['data']['headers']), 1)
+
+    def test_create_header_not_logged_in(self):
+        response = self.query(
+            CREATE_HEADER_MUTATION,
+            variables={
+                'id_header': 0,
+                'name': 'Header C',
+                'description': 'This is header C.',
+                'image_url': 'https://example.com/image3.jpg',
+                'email': 'headerc@example.com',
+                'phone_number': '+123123123',
+                'location': 'Chicago, USA',
+                'github': 'https://github.com/headerc'
+            }
+        )
+        
+        content = json.loads(response.content)
+        
+        self.assertIn('errors', content)
+        self.assertIn("Not logged in !", content['errors'][0]['message'])
+
+    def test_delete_not_logged_in(self):
+        self.query(
+            CREATE_HEADER_MUTATION,
+            variables={
+                'id_header': 1,
+                'name': 'Header D',
+                'description': 'This is header D.',
+                'image_url': 'https://example.com/image4.jpg',
+                'email': 'headerd@example.com',
+                'phone_number': '+111111111',
+                'location': 'Boston, USA',
+                'github': 'https://github.com/headerd'
+            },
+            headers=self.headers
+        )
+
+        response = self.query(
+            DELETE_HEADER_MUTATION,
+            variables={"id_header": 1}
+        )
+
+        content = json.loads(response.content)
+
+        self.assertIn('errors', content)
+        self.assertIn("Not logged in!", content['errors'][0]['message'])
+
+    def test_delete_invalid_id(self):
+        response = self.query(
+            DELETE_HEADER_MUTATION,
+            variables={"id_header": 9999},
+            headers=self.headers
+        )
+
+        content = json.loads(response.content)
+
+        self.assertIn('errors', content)
+        self.assertIn("Invalid Header id!", content['errors'][0]['message'])
+
+    def test_delete_header_successfully(self):
+        response_create = self.query(
+            CREATE_HEADER_MUTATION,
+            variables={
+                'id_header': 0,
+                'name': 'Header E',
+                'description': 'This is header E.',
+                'image_url': 'https://example.com/image5.jpg',
+                'email': 'headere@example.com',
+                'phone_number': '+222222222',
+                'location': 'Seattle, USA',
+                'github': 'https://github.com/headere'
+            },
+            headers=self.headers
+        )
+
+        content_create = json.loads(response_create.content)
+        created_header_id = content_create['data']['createHeader']['idHeader']
+
+        response = self.query(
+            DELETE_HEADER_MUTATION,
+            variables={"id_header": created_header_id},
+            headers=self.headers
+        )
+
+        content = json.loads(response.content)
+
+        self.assertResponseNoErrors(response)
+        self.assertEqual(content['data']['deleteHeader']['idHeader'], created_header_id)
+
+        header_exists = Header.objects.filter(id=created_header_id).exists()
+        self.assertFalse(header_exists)
+
+    def test_update_existing_header(self):
+        response_create = self.query(
+            CREATE_HEADER_MUTATION,
+            variables={
+                'id_header': 0,
+                'name': 'Header A',
+                'description': 'Updated Description',
+                'image_url': 'https://example.com/updated_image.jpg',
+                'email': 'updated_header@example.com',
+                'phone_number': '+987654321',
+                'location': 'San Francisco, USA',
+                'github': 'https://github.com/updatedheader'
+            },
+            headers=self.headers
+        )
+        
+        content_create = json.loads(response_create.content)
+        created_header_id = content_create['data']['createHeader']['idHeader']
+
+
+        response = self.query(
+            CREATE_HEADER_MUTATION,
+            variables={
+                'id_header': created_header_id,
+                'name': 'Updated Header',
+                'description': 'Updated Description',
+                'image_url': 'https://example.com/updated_image.jpg',
+                'email': 'updated_header@example.com',
+                'phone_number': '+987654321',
+                'location': 'San Francisco, USA',
+                'github': 'https://github.com/updatedheader'
+            },
+            headers=self.headers
+        )
+        
+        content_create = json.loads(response.content)
+
+        self.assertResponseNoErrors(response)
+        self.assertEqual(content_create['data']['createHeader']['name'], "Updated Header")
+
+        updated_header = Header.objects.get(id=created_header_id)
+        self.assertEqual(updated_header.name, "Updated Header")
+
+    def test_create_new_header(self):
+        Header.objects.all().delete()
+
+        response = self.query(
+        CREATE_HEADER_MUTATION,
+        variables={
+            'id_header': 0,  
+            'name': 'New Header',
+            'description': 'This is a newly created header.',
+            'image_url': 'https://example.com/new_image.jpg',
+            'email': 'new_header@example.com',
+            'phone_number': '+123456789',
+            'location': 'San Francisco, USA',
+            'github': 'https://github.com/newheader'
+        },
+        headers=self.headers
+    )
+       
+        content = json.loads(response.content)
+
+        self.assertResponseNoErrors(response)
+        self.assertEqual(content['data']['createHeader']['name'], 'New Header')
+
+        created_header = Header.objects.get(email='new_header@example.com')
+        self.assertIsNotNone(created_header)
+        self.assertEqual(created_header.name, "New Header")

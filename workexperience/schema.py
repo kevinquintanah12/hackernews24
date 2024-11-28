@@ -2,137 +2,110 @@ import graphene
 from graphene_django import DjangoObjectType
 from .models import WorkExperience
 from users.schema import UserType
+from django.db.models import Q
 
-# Definir el tipo de objeto GraphQL para WorkExperience
+# Definir el tipo GraphQL para WorkExperience
 class WorkExperienceType(DjangoObjectType):
     class Meta:
         model = WorkExperience
 
-# Definir la consulta para obtener experiencias laborales
+# Consultas GraphQL
 class Query(graphene.ObjectType):
-    work_experience = graphene.List(WorkExperienceType)
-    work_experience_by_id = graphene.Field(WorkExperienceType, id_work_experience=graphene.Int())
-
-    # Resolver para obtener todas las experiencias laborales de un usuario
-    def resolve_work_experience(self, info, **kwargs):
-        user = info.context.user
-        if user.is_anonymous:
-            raise Exception("Not logged in!")
+    experiences = graphene.List(WorkExperienceType, search=graphene.String())
+    experienceById = graphene.Field(WorkExperienceType, id_work_experience=graphene.Int())
+    
+    def resolve_experienceById(self, info, id_work_experience, **kwargs):
+        user = info.context.user 
         
-        return WorkExperience.objects.filter(user=user)
-
-    # Resolver para obtener una experiencia laboral por su ID
-    def resolve_work_experience_by_id(self, info, id_work_experience, **kwargs):
-        user = info.context.user
         if user.is_anonymous:
-            raise Exception("Not logged in!")
+            raise Exception ('Not logged in')
         
-        return WorkExperience.objects.filter(user=user, id=id_work_experience).first()
+        # Filtra la experiencia por el usuario y el ID
+        filter = (
+            Q(posted_by=user) & Q(id=id_work_experience)
+        )
+        
+        return WorkExperience.objects.filter(filter).first()
 
-# Definir la mutación para crear una nueva experiencia laboral
+    def resolve_experiences(self, info, search=None, **kwargs):
+        user = info.context.user
+        
+        if user.is_anonymous:
+            raise Exception('Not logged in!')
+        
+        # Si la búsqueda es "*", obtiene todas las experiencias
+        if search == "*":
+            filter = Q(posted_by=user)
+            return WorkExperience.objects.filter(filter)[:10]
+        else:
+            filter = Q(posted_by=user) & Q(role__icontains=search)
+            return WorkExperience.objects.filter(filter)
+
+# Mutaciones GraphQL
+
+# Crear o Editar una experiencia laboral
 class CreateWorkExperience(graphene.Mutation):
     id_work_experience = graphene.Int()
-    job_title = graphene.String()
-    company = graphene.String()
-    start_date = graphene.Date()
-    end_date = graphene.Date()
-    description = graphene.String()
-    accomplishments = graphene.List(graphene.String)  # Cambiar a lista de cadenas
-    user = graphene.Field(UserType)
+    role               = graphene.String()
+    company            = graphene.String()
+    accomplishments    = graphene.List(graphene.String)
+    start_date         = graphene.Date()
+    end_date           = graphene.Date()
+    location           = graphene.String()
+    posted_by          = graphene.Field(UserType)
 
     class Arguments:
-        job_title = graphene.String()
-        company = graphene.String()
-        start_date = graphene.Date()
-        end_date = graphene.Date()
-        description = graphene.String()
-        accomplishments = graphene.List(graphene.String)  # Cambiar a lista de cadenas
+        id_work_experience = graphene.Int()  # Para editar una experiencia existente
+        role               = graphene.String()
+        company            = graphene.String()
+        accomplishments    = graphene.List(graphene.String)
+        start_date         = graphene.Date()
+        end_date           = graphene.Date()
+        location           = graphene.String()
 
-    def mutate(self, info, job_title, company, start_date, end_date, description, accomplishments=None):
-        user = info.context.user
-        if user.is_anonymous:
-            raise Exception("Not logged in!")
+    def mutate(self, info, id_work_experience, role, company, accomplishments, start_date, end_date, location):
+        user = info.context.user or None
         
-        # Si no hay logros, asignamos una lista vacía
-        accomplishments = accomplishments if accomplishments is not None else []
+        if user.is_anonymous:
+            raise Exception('Not logged in !')
+        
+        # Verifica si existe la experiencia laboral
+        currentWorkExperience = WorkExperience.objects.filter(id=id_work_experience, posted_by=user).first()
 
-        # Guardamos la nueva experiencia laboral
-        work_experience = WorkExperience(
-            job_title=job_title,
-            company=company,
-            start_date=start_date,
-            end_date=end_date,
-            description=description,
-            accomplishments=accomplishments,  # Guardamos la lista de logros
-            user=user
-        )
-        work_experience.save()
+        if currentWorkExperience:
+            # Si la experiencia laboral existe, actualizamos los valores
+            currentWorkExperience.role = role
+            currentWorkExperience.company = company
+            currentWorkExperience.accomplishments = accomplishments
+            currentWorkExperience.start_date = start_date
+            currentWorkExperience.end_date = end_date
+            currentWorkExperience.location = location
+            currentWorkExperience.save()  # Guardamos los cambios
+        else:
+            # Si no existe, creamos una nueva experiencia laboral
+            currentWorkExperience = WorkExperience(
+                role=role,
+                company=company,
+                accomplishments=accomplishments,
+                start_date=start_date,
+                end_date=end_date,
+                location=location,
+                posted_by=user
+            )
+            currentWorkExperience.save()  # Guardamos la nueva experiencia
 
         return CreateWorkExperience(
-            id_work_experience=work_experience.id,
-            job_title=work_experience.job_title,
-            company=work_experience.company,
-            start_date=work_experience.start_date,
-            end_date=work_experience.end_date,
-            description=work_experience.description,
-            accomplishments=work_experience.accomplishments,  # Devolvemos los logros
-            user=work_experience.user
+            id_work_experience=currentWorkExperience.id,
+            role=currentWorkExperience.role,
+            company=currentWorkExperience.company,
+            accomplishments=currentWorkExperience.accomplishments,
+            start_date=currentWorkExperience.start_date,
+            end_date=currentWorkExperience.end_date,
+            location=currentWorkExperience.location,
+            posted_by=currentWorkExperience.posted_by
         )
 
-# Definir la mutación para actualizar una experiencia laboral existente
-class UpdateWorkExperience(graphene.Mutation):
-    id_work_experience = graphene.Int()
-    job_title = graphene.String()
-    company = graphene.String()
-    start_date = graphene.Date()
-    end_date = graphene.Date()
-    description = graphene.String()
-    accomplishments = graphene.List(graphene.String)  # Cambiar a lista de cadenas
-    user = graphene.Field(UserType)
-
-    class Arguments:
-        id_work_experience = graphene.Int()
-        job_title = graphene.String()
-        company = graphene.String()
-        start_date = graphene.Date()
-        end_date = graphene.Date()
-        description = graphene.String()
-        accomplishments = graphene.List(graphene.String)  # Cambiar a lista de cadenas
-
-    def mutate(self, info, id_work_experience, job_title, company, start_date, end_date, description, accomplishments=None):
-        user = info.context.user
-        if user.is_anonymous:
-            raise Exception("Not logged in!")
-
-        # Buscar la experiencia laboral
-        work_experience = WorkExperience.objects.filter(id=id_work_experience, user=user).first()
-        if not work_experience:
-            raise Exception("Work Experience not found or not authorized to edit.")
-        
-        # Si no hay logros, asignamos una lista vacía
-        accomplishments = accomplishments if accomplishments is not None else []
-
-        # Actualizamos los valores
-        work_experience.job_title = job_title
-        work_experience.company = company
-        work_experience.start_date = start_date
-        work_experience.end_date = end_date
-        work_experience.description = description
-        work_experience.accomplishments = accomplishments  # Actualizamos los logros
-        work_experience.save()
-
-        return UpdateWorkExperience(
-            id_work_experience=work_experience.id,
-            job_title=work_experience.job_title,
-            company=work_experience.company,
-            start_date=work_experience.start_date,
-            end_date=work_experience.end_date,
-            description=work_experience.description,
-            accomplishments=work_experience.accomplishments,  # Devolvemos los logros actualizados
-            user=work_experience.user
-        )
-
-# Definir la mutación para eliminar una experiencia laboral
+# Eliminar una experiencia laboral
 class DeleteWorkExperience(graphene.Mutation):
     id_work_experience = graphene.Int()
 
@@ -140,21 +113,28 @@ class DeleteWorkExperience(graphene.Mutation):
         id_work_experience = graphene.Int()
 
     def mutate(self, info, id_work_experience):
-        user = info.context.user
+        user = info.context.user or None
+        
         if user.is_anonymous:
-            raise Exception("Not logged in!")
+            raise Exception('Not logged in!')
         
-        work_experience = WorkExperience.objects.filter(id=id_work_experience, user=user).first()
-        if not work_experience:
-            raise Exception("Work Experience not found or not authorized to delete.")
-        
-        work_experience.delete()
-        return DeleteWorkExperience(id_work_experience=id_work_experience)
+        # Buscar la experiencia laboral por ID y usuario
+        currentWorkExperience = WorkExperience.objects.filter(id=id_work_experience, posted_by=user).first()
 
-# Definir las mutaciones en el esquema
+        if not currentWorkExperience:
+            raise Exception('Invalid Work Experience id!')
+        
+        # Eliminar la experiencia laboral
+        currentWorkExperience.delete()
+        
+        return DeleteWorkExperience(
+            id_work_experience=id_work_experience,
+        )
+
+# Mutación de creación y eliminación
 class Mutation(graphene.ObjectType):
     create_work_experience = CreateWorkExperience.Field()
-    update_work_experience = UpdateWorkExperience.Field()
     delete_work_experience = DeleteWorkExperience.Field()
 
+# Esquema GraphQL que incluye las consultas y mutaciones
 schema = graphene.Schema(query=Query, mutation=Mutation)
